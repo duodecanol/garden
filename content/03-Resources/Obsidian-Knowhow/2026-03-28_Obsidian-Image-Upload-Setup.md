@@ -33,17 +33,17 @@ related:
 
 ### 탈락 사유
 
-| 플러그인 | 탈락 이유 |
-|---|---|
-| Image Auto Upload (PicGo) | PicGo 앱 별도 실행 필요, 모바일 미지원 |
-| Image Upload Toolkit | 자동 업로드 아님 (수동 "Publish page" 커맨드), 원본 수정 안 함 |
-| S3 Image Uploader | 모바일 미지원, 배치 업로드 제한적 |
-| Image Uploader For Note | 모바일 미지원, 수동 트리거 방식 |
-| Cloudflare Image Auto Uploader | 모바일 미지원, 배치 업로드 없음 |
-| Cloudinary / Imgur | R2 미지원, 외부 서비스 종속 |
-| NotePix | GitHub repo 크기 제한 (1~5GB), R2 미지원 |
-| WebDAV Image Uploader | 모바일 미지원, 별도 WebDAV 서버 필요 |
-| CLI/CI 방식 | 실시간 업로드 불가, 커스텀 스크립트 유지보수 부담 |
+| 플러그인                           | 탈락 이유                                        |
+| ------------------------------ | -------------------------------------------- |
+| Image Auto Upload (PicGo)      | PicGo 앱 별도 실행 필요, 모바일 미지원                    |
+| Image Upload Toolkit           | 자동 업로드 아님 (수동 "Publish page" 커맨드), 원본 수정 안 함 |
+| S3 Image Uploader              | 모바일 미지원, 배치 업로드 제한적                          |
+| Image Uploader For Note        | 모바일 미지원, 수동 트리거 방식                           |
+| Cloudflare Image Auto Uploader | 모바일 미지원, 배치 업로드 없음                           |
+| Cloudinary / Imgur             | R2 미지원, 외부 서비스 종속                            |
+| NotePix                        | GitHub repo 크기 제한 (1~5GB), R2 미지원            |
+| WebDAV Image Uploader          | 모바일 미지원, 별도 WebDAV 서버 필요                     |
+| CLI/CI 방식                      | 실시간 업로드 불가, 커스텀 스크립트 유지보수 부담                 |
 
 ### 최종 선택
 
