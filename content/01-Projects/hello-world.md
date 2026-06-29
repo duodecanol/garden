@@ -13,11 +13,11 @@ related: []
 # Hello, World
 
 > [!abstract] 소개
-> 이 노트는 [journal.duodecanol.com](https://journal.duodecanol.com) 퍼블리싱 파이프라인 테스트용 페이지입니다.
+> [journal.duodecanol.com](https://journal.duodecanol.com) — 백엔드·ML 인프라 엔지니어로 일하며 남기는 공개 작업 노트입니다. 들러주셔서 감사합니다.
 
 ## 이 사이트는
 
-Obsidian 볼트에서 작성된 노트 중 `publish: true` 로 표시된 것들이 자동으로 이곳에 게시됩니다.
+Obsidian 볼트에서 쓴 노트 중 `publish: true` 로 표시한 글이 자동으로 게시됩니다. 인프라·LLM 플랫폼 작업 기록, 엔지니어링 회고, 학습 메모를 주로 다룹니다. 채용 담당자나 동료가 제 작업 방식을 들여다볼 수 있는 창구이기도 합니다.
 
 **스택:**
 - **저장소**: GitHub private repo (`duodecanol/journal`)
@@ -27,9 +27,9 @@ Obsidian 볼트에서 작성된 노트 중 `publish: true` 로 표시된 것들�
 ## 작성 환경
 
 - **에디터**: [Obsidian](https://obsidian.md)
-- **AI 어시스턴트**: Claude Code (Anthropic)
+- **AI 어시스턴트**: Claude Code (Anthropic), Codex (OpenAI), Gemini (Google)
 - **노트 체계**: PARA 방법론 기반
 
 ## 관련 링크
 
-- [[index]] — Inbox 목록
+- [[index|journal 홈]] — 전체 공개 노트 둘러보기
