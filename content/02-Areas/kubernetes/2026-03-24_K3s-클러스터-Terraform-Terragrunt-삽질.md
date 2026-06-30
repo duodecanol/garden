@@ -29,7 +29,7 @@ aliases:
 
 # K3s 클러스터 IaC — Terraform/Terragrunt 삽질 모음
 
-thrifty-intranet K3s 클러스터(imagegen ComfyUI GPU)를 Terraform/Terragrunt + Helm으로 구성하며 누적한 스크래치 + 트러블슈팅. (모듈: metallb · cert_manager · traefik · reflector · reloader · gpu_operator · data_layer)
+gpu-intranet K3s 클러스터(imagegen ComfyUI GPU)를 Terraform/Terragrunt + Helm으로 구성하며 누적한 스크래치 + 트러블슈팅. (모듈: metallb · cert_manager · traefik · reflector · reloader · gpu_operator · data_layer)
 
 ## 참고 링크 모음 (구성 레퍼런스)
 
@@ -85,7 +85,7 @@ Deployment.apps "comfyui-worker" is invalid:
   - `annotation`: pod annotation에 append됨 → env 불변 → tfstate 안 깨짐.
     ```
     reloader.stakater.com/last-reloaded-from={"type":"CONFIGMAP","name":"worker-config",
-      "namespace":"imagegen-thrifty","hash":"e96b...","containerRefs":["comfyui-worker"],...}
+      "namespace":"imagegen-gpu","hash":"e96b...","containerRefs":["comfyui-worker"],...}
     ```
   - 참고: [Reloader How-it-works](https://github.com/stakater/Reloader/blob/master/docs/How-it-works.md) · [Reloader vs k8s-trigger-controller](https://github.com/stakater/Reloader/blob/master/docs/Reloader-vs-k8s-trigger-controller.md) · [reload behavior](https://github.com/stakater/Reloader?tab=readme-ov-file#1--reload-behavior)
 
@@ -103,8 +103,8 @@ Terraform plan error: API did not recognize GroupVersionKind from manifest (CRD 
 ## 3. 배포 중 cluster connection refused → 모듈 의존성
 
 ```
-Kubernetes cluster unreachable: Get "https://10.78.143.7:6443/version":
-  dial tcp 10.78.143.7:6443: connect: connection refused
+Kubernetes cluster unreachable: Get "https://10.0.0.7:6443/version":
+  dial tcp 10.0.0.7:6443: connect: connection refused
 ```
 모듈 간 dependency를 제대로 안 걸어서 그럴 수 있다. 예: **Traefik이 제대로 ingress하려면 MetalLB의 IP L2 Advertisement + cert-manager의 인증서 생성이 모두 완료되어야 한다.** (실제 plan 로그상 traefik `helm_release`가 cert-manager 완료 직후 떴다가 connection refused로 실패.) 추가로 `kubernetes_namespace` → `kubernetes_namespace_v1` deprecation 경고도 동반.
 
@@ -148,7 +148,7 @@ cert-manager로 발급한 Secret(인증서)은 **다른 네임스페이스 파�
 *  subject: CN=TRAEFIK DEFAULT CERT
 *  issuer:  CN=TRAEFIK DEFAULT CERT
 # 올바른 상태
-*  subject: CN=*.intranet.moelive.tech
+*  subject: CN=*.intranet.example.internal
 *  issuer:  C=US; O=Let's Encrypt; CN=R12
 *  SSL certificate verify ok.
 ```
@@ -171,15 +171,15 @@ sudo -S sh /tmp/k8s_conf.sh <<< '${var.node_passwords[count.index]}'
 ## 8. DNS 캐시 확인 스니펫
 
 ```bash
-resolvectl query remote.k8s.intranet.moelive.tech
+resolvectl query remote.k8s.intranet.example.internal
 #   첫 요청:  -- Data from: network
 #   두번째:   -- Data from: cache network   ← 캐시 적중
 ```
 > [!warning] DNS cache로 변경된 주소를 못 찾음
 > 출력의 `Data from: network` → `cache network` 변화로 캐시 적중을 알 수 있다. 네트워크 세팅이 변경된 때엔 캐시 제거: `sudo resolvectl flush-caches`.
 ```bash
-curl -k -v https://gateway.imagegen-thrifty.intranet.moelive.tech/health
-curl -k -v -H "Host: gateway.imagegen-thrifty.intranet.moelive.tech" https://10.78.147.2/docs
+curl -k -v https://gateway.imagegen-gpu.intranet.example.internal/health
+curl -k -v -H "Host: gateway.imagegen-gpu.intranet.example.internal" https://10.0.0.2/docs
 ```
 
 ## 9. 툴 환경

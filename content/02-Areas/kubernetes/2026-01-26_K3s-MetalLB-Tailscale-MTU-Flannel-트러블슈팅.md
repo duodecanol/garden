@@ -21,7 +21,7 @@ topics:
 related:
   - "[[2026-03-24_K3s-클러스터-Terraform-Terragrunt-삽질]]"
   - "[[2026-01-27_MetalLB-L2-좀비-DNS-OPNsense-Unbound]]"
-  - "[[02-Areas/vivident-office-network/index]]"
+  - "[[02-Areas/vivident-office-network/index|office-network]]"
 aliases:
   - Tailscale K3s MTU
   - flannel MTU 1200
@@ -31,7 +31,7 @@ aliases:
 
 # K3s + MetalLB over Tailscale — MTU/Flannel/MSS 트러블슈팅
 
-서버 노드가 있는 네트워크는 **`10.78`** 서브넷이고, 에이전트 노드 중 2개는 **`10.53`**(그리고 `10.79`) 서브넷에 있다. 두 원격 네트워크가 **OPNsense 내장 Tailscale(WireGuard)** 로 묶인 특이한 토폴로지. 동일 구조로 여러 번 배포에 성공했었기 때문에 MetalLB 버전/ServiceLB 충돌 같은 일반적 원인은 처음부터 배제하고, "라우터를 사이에 둔 서로 다른 서브넷"이라는 이번 환경의 가장 큰 변수에 집중했다. 결론적으로 모든 증상은 하나의 근본 원인 — **Tailscale 터널(MTU 1280)을 통과하지 못하는 큰 패킷** — 에서 비롯되었다.
+서버 노드가 있는 네트워크는 **`10.0.0`** 서브넷이고, 에이전트 노드 중 2개는 **`10.0.1`**(그리고 `10.0.2`) 서브넷에 있다. 두 원격 네트워크가 **OPNsense 내장 Tailscale(WireGuard)** 로 묶인 특이한 토폴로지. 동일 구조로 여러 번 배포에 성공했었기 때문에 MetalLB 버전/ServiceLB 충돌 같은 일반적 원인은 처음부터 배제하고, "라우터를 사이에 둔 서로 다른 서브넷"이라는 이번 환경의 가장 큰 변수에 집중했다. 결론적으로 모든 증상은 하나의 근본 원인 — **Tailscale 터널(MTU 1280)을 통과하지 못하는 큰 패킷** — 에서 비롯되었다.
 
 이 노트는 IP Pool 생성 실패부터 Redis 간헐 타임아웃까지, 증상이 한 꺼풀씩 벗겨진 진단 여정을 순서대로 기록한다.
 
@@ -73,14 +73,14 @@ L3로 분리된 노드 구조에서 발생 가능한 핵심 원인:
 
 ### (a) Layer 2 모드의 구조적 한계 (Broadcast Domain 분리)
 MetalLB L2 모드는 **ARP(브로드캐스트)** 에 응답해 작동하는데, **ARP는 라우터(L3)를 넘지 못한다.**
-- `10.78` 대역 IP Pool을 만들면, `10.53`의 Speaker 파드는 그 IP에 대한 ARP 요청을 받지도 응답하지도 못한다.
-- LoadBalancer 서비스가 `10.53` 노드에 스케줄되면 `10.78` IP를 광고해야 하는데 라우터가 "자기 서브넷 아닌 IP"라며 드랍할 수 있다.
+- `10.0.0` 대역 IP Pool을 만들면, `10.0.1`의 Speaker 파드는 그 IP에 대한 ARP 요청을 받지도 응답하지도 못한다.
+- LoadBalancer 서비스가 `10.0.1` 노드에 스케줄되면 `10.0.0` IP를 광고해야 하는데 라우터가 "자기 서브넷 아닌 IP"라며 드랍할 수 있다.
 
 ### (b) Validating Webhook 통신 실패 (생성 과정 에러 시 유력)
 `kubectl apply -f ip-pool.yaml`이 **타임아웃/Internal Error**로 실패하면 이쪽이다.
-- 메커니즘: K3s 마스터(API Server, `10.78`)가 CRD 생성 시 유효성 검사를 위해 MetalLB Controller 파드(Webhook)를 호출한다.
-- 시나리오: Controller 파드가 에이전트 노드(`10.53`)에 스케줄됨 → 마스터가 `10.53.x.x:443/9443`으로 호출 → 중간 라우터/방화벽이 그 방향 포트를 막음 → 승인 안 떨어짐.
-- 점검: 라우터/방화벽에서 `10.78 ↔ 10.53` 간 K8s 필수 포트(Overlay VXLAN, 443, 9443 등) 개방 여부.
+- 메커니즘: K3s 마스터(API Server, `10.0.0`)가 CRD 생성 시 유효성 검사를 위해 MetalLB Controller 파드(Webhook)를 호출한다.
+- 시나리오: Controller 파드가 에이전트 노드(`10.0.1`)에 스케줄됨 → 마스터가 `10.0.1.x.x:443/9443`으로 호출 → 중간 라우터/방화벽이 그 방향 포트를 막음 → 승인 안 떨어짐.
+- 점검: 라우터/방화벽에서 `10.0.0 ↔ 10.0.1` 간 K8s 필수 포트(Overlay VXLAN, 443, 9443 등) 개방 여부.
 
 ### (c) Memberlist(Gossip) 프로토콜 차단
 Speaker 파드들은 `Memberlist`(TCP/UDP **7946**)로 리더/IP 소유 정보를 교환한다. 라우터가 이 포트를 막으면 양쪽 Speaker가 서로를 못 봐 "Split Brain"이 되거나 클러스터 형성에 실패한다.
@@ -93,7 +93,7 @@ Speaker 파드들은 `Memberlist`(TCP/UDP **7946**)로 리더/IP 소유 정보�
   kind: L2Advertisement
   metadata: { name: pool-server-subnet }
   spec:
-    ipAddressPools: [ pool-10-78 ]
+    ipAddressPools: [ pool-subnet-a ]
     nodeSelectors:
     - matchLabels: { kubernetes.io/hostname: server-node-name }
   ---
@@ -101,7 +101,7 @@ Speaker 파드들은 `Memberlist`(TCP/UDP **7946**)로 리더/IP 소유 정보�
   kind: L2Advertisement
   metadata: { name: pool-agent-subnet }
   spec:
-    ipAddressPools: [ pool-10-53 ]
+    ipAddressPools: [ pool-subnet-b ]
     nodeSelectors:
     - matchLabels: { kubernetes.io/hostname: agent-node-name }
   ```
@@ -121,7 +121,7 @@ Speaker 파드들은 `Memberlist`(TCP/UDP **7946**)로 리더/IP 소유 정보�
 4. 결과: K3s 내부 패킷이 Tailscale 터널을 통과하기엔 너무 커서 조각화/폐기 → Webhook 요청 타임아웃.
 
 ### 해결 ①-1: MetalLB Controller를 마스터 노드로 강제 이동 (즉시 우회, 추천)
-Controller가 마스터(`10.78`)에 있으면 Webhook 트래픽이 Tailscale을 건널 필요가 없다(로컬 통신) → MTU/라우팅 문제 즉시 우회.
+Controller가 마스터(`10.0.0`)에 있으면 Webhook 트래픽이 Tailscale을 건널 필요가 없다(로컬 통신) → MTU/라우팅 문제 즉시 우회.
 ```bash
 kubectl get nodes                       # 마스터 노드 이름 확인
 kubectl get nodes --show-labels         # 마스터 라벨이 master인지 control-plane인지 확인
@@ -141,11 +141,11 @@ kubectl patch deployment controller -n metallb-system --type merge -p \
 
 배포는 성공했는데 **Ingress 브라우저 접속이 안 됨**. control-plane이 있는 네트워크에선 `curl` 성공, 그렇지 않은 네트워크에선 handshake에서 멈춘다.
 ```
-user@vnode-06:~$ hostname -I
-10.79.160.6 10.42.6.0 10.42.6.1
-user@vnode-06:~$ curl -k -v -H "Host: gateway.imagegen-thrifty.intranet.moelive.tech" https://10.78.147.2/docs
-* Trying 10.78.147.2:443...
-* Connected to 10.78.147.2 (10.78.147.2) port 443      ← TCP 3-way handshake 성공
+user@node-06:~$ hostname -I
+10.0.2.6 10.42.6.0 10.42.6.1
+user@node-06:~$ curl -k -v -H "Host: gateway.imagegen-gpu.intranet.example.internal" https://10.0.0.2/docs
+* Trying 10.0.0.2:443...
+* Connected to 10.0.0.2 (10.0.0.2) port 443      ← TCP 3-way handshake 성공
 * TLSv1.3 (OUT), TLS handshake, Client hello (1):       ← 여기서 멈춤
 ```
 
@@ -158,7 +158,7 @@ user@vnode-06:~$ curl -k -v -H "Host: gateway.imagegen-thrifty.intranet.moelive.
 3. `curl`의 `Client Hello`는 인증서 정보 등으로 패킷이 크다 → K3s는 1450까지 보낼 수 있다고 보고 송신 → Tailscale 인터페이스에서 1280 초과로 폐기(Drop).
 4. 보통 라우터가 "패킷이 크니 줄여라"는 ICMP(Fragmentation Needed)를 보내야 하나, 방화벽/VPN 특성상 전달이 안 돼 무한 대기(Hang).
 
-검증 보조: 문제 노드에서 `ping -s 100 10.78.147.2`(작은 패킷)로 도달 자체를 확인.
+검증 보조: 문제 노드에서 `ping -s 100 10.0.0.2`(작은 패킷)로 도달 자체를 확인.
 
 ---
 
@@ -252,7 +252,7 @@ ip link show flannel.1           # mtu 1200(실측 1150) 확인
 ```
 
 ### 추가 점검: VXLAN 포트
-MTU를 고쳐도 안 되면 OPNsense 방화벽에서 K3s 기본 VXLAN 포트 **UDP 8472**가 두 사이트(`10.78 ↔ 10.53`) 간에 열렸는지 확인. 막히면 노드 간 파드 통신이 완전 차단된다.
+MTU를 고쳐도 안 되면 OPNsense 방화벽에서 K3s 기본 VXLAN 포트 **UDP 8472**가 두 사이트(`10.0.0 ↔ 10.0.1`) 간에 열렸는지 확인. 막히면 노드 간 파드 통신이 완전 차단된다.
 
 ---
 
@@ -282,7 +282,7 @@ ping -s 1200 -M do -c 2 <REDIS_POD_IP>
 #   → ping: sendmsg: Message too large    (OS가 MTU 1150 초과를 막아줌 = 적용 정상)
 ```
 
-실측 결과 (vnode 환경, Redis 파드 `10.42.4.20`):
+실측 결과 (node 환경, Redis 파드 `10.42.4.20`):
 ```
 nc -zv 10.42.4.20 6379            → succeeded!
 ping -s 1100 -c 2 10.42.4.20      → 0% packet loss
@@ -353,4 +353,4 @@ client = redis.Redis(
 2. **`flannel-mtu` 옵션은 없다** → `flannel-conf` JSON의 `Backend.MTU: 1200` + **`ip link delete flannel.1` 후 재기동**(재시작만으론 MTU 안 바뀜).
 3. 네트워크 복구 후 남는 **간헐 타임아웃**은 `socket_keepalive`/`health_check_interval`/`retry_on_timeout` 등 **클라이언트 튜닝**으로 마무리.
 
-> 같은 클러스터의 IaC 함정: [[2026-03-24_K3s-클러스터-Terraform-Terragrunt-삽질]] · 좀비 DNS 레코드: [[2026-01-27_MetalLB-L2-좀비-DNS-OPNsense-Unbound]] · 라우터/OPNsense 운영: [[02-Areas/vivident-office-network/index|vivident-office-network]]
+> 같은 클러스터의 IaC 함정: [[2026-03-24_K3s-클러스터-Terraform-Terragrunt-삽질]] · 좀비 DNS 레코드: [[2026-01-27_MetalLB-L2-좀비-DNS-OPNsense-Unbound]] · 라우터/OPNsense 운영: [[02-Areas/vivident-office-network/index|office-network]]

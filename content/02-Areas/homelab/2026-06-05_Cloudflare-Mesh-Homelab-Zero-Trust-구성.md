@@ -31,7 +31,7 @@ related:
 
 ## 배경 / 목표
 
-기존에 [[01-Projects/oshiz-data-insight/2026-05-08_Proxmox-CT-Ubuntu26-Cloudflare-WARP-설정-여정|db-middleman CT]] 에서 이미 같은 Zero Trust **Team org** 을 운영 중이다 (WARP 설치, `engineering` vnet, `eevee.local`/`vivident.lan` fallback domain). 이 노트는 그 org 를 홈랩 전체로 확장하는 설계다.
+기존에 [[01-Projects/oshiz-data-insight/2026-05-08_Proxmox-CT-Ubuntu26-Cloudflare-WARP-설정-여정|db-middleman CT]] 에서 이미 같은 Zero Trust **Team org** 을 운영 중이다 (WARP 설치, 전용 vnet, `app.internal`/`office.lan` fallback domain). 이 노트는 그 org 를 홈랩 전체로 확장하는 설계다.
 
 요구사항 3가지:
 
@@ -93,7 +93,7 @@ connector 박스는 **전용 LXC 1개** 권장. 접속하는 *내 기기* 만 Cl
 1. connector LXC 에 `dnsmasq` 설치, `vm1.home.internal → 192.168.1.21` 식 정적 매핑
 2. Zero Trust → Settings → WARP Client → **Local Domain Fallback** 에 도메인 `home.internal` + DNS server = connector LXC 의 LAN IP 등록
 3. dnsmasq 가 CIDR route(②) 안에 있으면 WARP 터널 통해 도달 가능 — "Connecting it to Cloudflare if inside the WARP tunnel"
-4. 이미 운영 중인 `eevee.local → 10.0.0.2`, `vivident.lan` fallback 과 같은 방식 (기존 노트에서 검증됨)
+4. 이미 운영 중인 `app.internal → 10.0.0.2`, `office.lan` fallback 과 같은 방식 (기존 노트에서 검증됨)
 
 > [!tip] Enterprise 라면
 > Internal DNS zone (`.local` 등 TLD 제약 없음) + DNS view + Resolver Policy("Use Internal DNS") 로 디바이스 설정 없이 중앙 관리. 단 "Gateway configuration must exist within the same Cloudflare account where the internal zone exists." 홈랩에는 보통 과함.
@@ -115,7 +115,7 @@ VM/CT 마다 Cloudflare One Client 를 깔지 않고, **connector 가 gateway �
 > [!caution] RFC1918 default exclude 함정
 > "By default, WARP excludes traffic bound for RFC 1918 space." Split Tunnel 설정을 안 하면 CIDR route 를 등록해도 클라이언트가 그쪽으로 트래픽을 안 보낸다. ②가 안 되면 99% 여기.
 
-기존 `engineering` vnet 의 AWS/GCP 접근과 홈 LAN 대역이 **겹치지 않는지** 확인 필요. 겹치면 별도 vnet 으로 분리.
+기존 vnet 의 클라우드 접근 대역과 홈 LAN 대역이 **겹치지 않는지** 확인 필요. 겹치면 별도 vnet 으로 분리.
 
 ### ③ 특정 포트 public HTTPS — Tunnel Public Hostname
 
@@ -154,7 +154,7 @@ origin 이 self-signed HTTPS 면 cert name mismatch 주의 — 첫 셋업은 내
 > - **connector 위치**: Proxmox host 직접보다 **전용 LXC**. host 재부팅/AMI 회전과 tunnel lifecycle 분리.
 > - **LXC TUN device**: WARP/Mesh node 는 `/dev/net/tun` 필요. LXC 에서 unprivileged 면 호스트에서 device passthrough 설정 필요 (기존 db-middleman 노트에서 확인된 전제).
 > - **public/private 혼재 보안 경계**: ②(private)와 ③(public)을 같은 터널에 섞으면 노출면 관리가 흐려짐. 노출 앱 늘면 public 전용 / private 전용 터널 분리 고려.
-> - **vnet 대역 충돌**: 기존 `engineering` vnet 과 홈 LAN CIDR 겹치면 virtual network 분리 필수.
+> - **vnet 대역 충돌**: 기존 vnet 과 홈 LAN CIDR 겹치면 virtual network 분리 필수.
 
 ## 다음 액션 (구현 시)
 

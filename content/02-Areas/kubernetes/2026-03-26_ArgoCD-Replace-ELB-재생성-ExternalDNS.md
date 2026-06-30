@@ -138,4 +138,4 @@ kubectl logs -f -l app.kubernetes.io/name=external-dns -n kube-system
 - **`txtOwnerId` 꼭 설정**: 안 하면 나중에 다른 클러스터(예: Staging)에 ExternalDNS를 띄웠을 때 같은 도메인을 서로 건드리며 DNS가 핑퐁을 치는 대참사가 발생.
 - 적용 후엔 실수로 `Replace`를 눌러 ELB가 바뀌어도 **1분 내 자동으로 DNS가 따라가** 장애 시간을 획기적으로 줄인다.
 
-> 같은 dangling/stale 레코드의 **사내(OPNsense) 버전**: [[2026-01-27_MetalLB-L2-좀비-DNS-OPNsense-Unbound]]
+> 같은 dangling/stale 레코드의 **온프레미스(OPNsense) 버전**: [[2026-01-27_MetalLB-L2-좀비-DNS-OPNsense-Unbound]]
