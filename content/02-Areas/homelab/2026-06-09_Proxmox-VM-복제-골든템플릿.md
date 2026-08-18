@@ -114,12 +114,131 @@ sudo systemctl disable --now fwupd-refresh.timer    # 베어메탈 펌웨어용,
 
 ### 3-5. 최종 봉인
 ```bash
-sudo cloud-init clean
+sudo cloud-init clean --logs
 sudo truncate -s 0 /etc/machine-id
 sudo rm /var/lib/dbus/machine-id
 sudo ln -s /etc/machine-id /var/lib/dbus/machine-id
+sudo rm -f /etc/ssh/ssh_host_*
+sudo apt clean
 sudo poweroff   # → Convert to Template
 ```
+## 4. 개발용 VM 도구 선설치 — Cloud-Init으로 가능
+
+**결론: 가능하다.** 다만 세 도구의 설치 성격이 다르다.
+
+| 도구 | 설치 위치 | Cloud-Init 적합도 | 주의점 |
+|---|---|---:|---|
+| Docker Engine | 시스템 전역 | 높음 | 공식 Docker APT 저장소를 먼저 등록해야 함 |
+| Homebrew on Linux (구 Linuxbrew) | 특정 일반 사용자 | 중간 | root 설치 불가·단일 사용자 설치·초기 `sudo` 필요 |
+| mise | 특정 일반 사용자 | 높음 | root가 아닌 대상 사용자의 `HOME`으로 설치해야 함 |
+
+### 4-1. 권장 분리
+
+- **골든 템플릿에 미리 설치**: `cloud-init`, `qemu-guest-agent`, `curl`, `git`, `build-essential`, Docker, Homebrew, mise처럼 모든 VM이 공통으로 쓸 도구.
+- **클론별 Cloud-Init**: hostname, SSH 키, IP, 역할별 도구와 설정.
+- Docker는 시스템 서비스이므로 템플릿에 선설치하기 쉽다.
+- Homebrew와 mise는 사용자별 상태이므로 템플릿의 실제 개발 사용자(`dev` 등)를 정하고 그 사용자로 설치한다. 여러 사용자가 로그인할 VM이면 사용자별 설치가 필요하다.
+- 매 클론 첫 부팅마다 외부 저장소에서 설치하면 부팅 시간이 길고 네트워크·저장소 상태에 의존한다. 재현 가능한 골든 템플릿이 목적이면 도구 설치를 1회 수행한 뒤 `cloud-init clean` 하고 봉인하는 편이 낫다.
+
+### 4-2. Proxmox custom user-data 예시 (Ubuntu 22.04/24.04)
+
+Proxmox Cloud-Init 탭은 기본 사용자·키·네트워크 설정 중심이다. `runcmd`/`write_files`를 쓰려면 snippets 스토리지의 custom user-data를 `cicustom`으로 연결한다.
+
+아래 예시는 `dev` 사용자가 **이미 존재하고 passwordless sudo가 가능하다**는 전제다. `cicustom user`를 지정하면 Proxmox가 자동 생성하던 user-data를 대체하므로, 사용자·SSH 키 설정도 custom 파일 안에서 관리해야 한다.
+
+```yaml
+#cloud-config
+package_update: true
+package_upgrade: false
+packages:
+  - ca-certificates
+  - curl
+  - file
+  - git
+  - build-essential
+  - procps
+  - qemu-guest-agent
+
+write_files:
+  - path: /usr/local/sbin/install-dev-tools
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euxo pipefail
+
+      TARGET_USER=dev
+      TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+      test -n "$TARGET_HOME"
+
+      # Docker 공식 APT 저장소
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+        -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+      . /etc/os-release
+      SUITE="${UBUNTU_CODENAME:-$VERSION_CODENAME}"
+      cat >/etc/apt/sources.list.d/docker.sources <<EOF
+      Types: deb
+      URIs: https://download.docker.com/linux/ubuntu
+      Suites: ${SUITE}
+      Components: stable
+      Architectures: $(dpkg --print-architecture)
+      Signed-By: /etc/apt/keyrings/docker.asc
+      EOF
+
+      apt-get update
+      DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        docker-ce docker-ce-cli containerd.io \
+        docker-buildx-plugin docker-compose-plugin
+      systemctl enable --now docker
+      usermod -aG docker "$TARGET_USER"
+
+      # Homebrew on Linux: 공식 설치기는 일반 사용자로 실행해야 한다.
+      # 대상 사용자는 passwordless sudo가 가능해야 한다.
+      curl -fsSL \
+        https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh \
+        -o /tmp/install-homebrew.sh
+      chown "$TARGET_USER:$TARGET_USER" /tmp/install-homebrew.sh
+      runuser -u "$TARGET_USER" -- env \
+        HOME="$TARGET_HOME" NONINTERACTIVE=1 \
+        /bin/bash /tmp/install-homebrew.sh
+
+      # mise를 Homebrew로 설치하고 대상 사용자의 Bash에 활성화한다.
+      runuser -u "$TARGET_USER" -- env HOME="$TARGET_HOME" \
+        /bin/bash -lc '
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install mise
+          grep -qxF '\''eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'\'' "$HOME/.bashrc" ||
+            echo '\''eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'\'' >> "$HOME/.bashrc"
+          grep -qxF '\''eval "$(mise activate bash)"'\'' "$HOME/.bashrc" ||
+            echo '\''eval "$(mise activate bash)"'\'' >> "$HOME/.bashrc"
+        '
+      rm -f /tmp/install-homebrew.sh
+      systemctl enable --now qemu-guest-agent
+
+runcmd:
+  - [bash, /usr/local/sbin/install-dev-tools]
+```
+
+```bash
+# snippets를 지원하는 스토리지에 dev-tools.yaml을 올린 뒤
+qm set <VMID> --cicustom user=local:snippets/dev-tools.yaml
+```
+
+`docker` 그룹 추가는 다음 로그인부터 적용된다. 따라서 설치 직후 현재 Cloud-Init 프로세스에서 검증하기보다, SSH를 새로 연결한 뒤 `docker run hello-world` 또는 `docker version`으로 확인한다.
+
+### 4-3. 운영상 주의
+
+- `package_upgrade: true`는 템플릿마다 패키지 버전과 재부팅 여부가 달라지므로 골든 이미지에는 보통 사용하지 않는다.
+- Homebrew 설치 URL의 `HEAD`는 최신 스크립트를 가리키므로 완전한 재현성은 없다. 장기 운영 템플릿은 설치 시점을 고정하거나, 이미지 빌드 단계에서 검증한 결과를 봉인한다.
+- `curl | bash` 대신 예시처럼 파일로 내려받아 실행하면 실패 시 `/tmp`의 설치기를 먼저 확인할 수 있다. 외부 설치기가 변경되면 다시 검토한다.
+- 기존 3-4의 `apt-daily*` 타이머 비활성화는 유지한다. 첫 부팅 때 Cloud-Init과 apt 자동 업데이트가 동시에 실행되면 APT lock 경합이 날 수 있다.
+- Docker가 UFW/firewalld 포트를 우회할 수 있으므로 Docker를 설치하는 VM은 기존 방화벽 정책과 `DOCKER-USER` 체인을 함께 점검한다.
+- `cicustom`에 사용하는 snippets 스토리지는 `snippets` 콘텐츠 타입을 지원해야 하며, 클러스터에서 VM을 옮길 모든 노드가 해당 파일을 읽을 수 있어야 한다.
+- 모든 노드가 Docker를 쓸 필요가 없으면 Docker/Homebrew/mise를 공통 템플릿에 넣지 말고, 역할별 custom user-data로 분리한다.
+
+공식 문서: [Proxmox Cloud-Init Support](https://pve.proxmox.com/wiki/Cloud-Init_Support), [Cloud-Init modules](https://docs.cloud-init.io/en/latest/reference/modules.html), [Homebrew on Linux](https://docs.brew.sh/Homebrew-on-Linux), [mise Getting Started](https://mise.jdx.dev/getting-started.html), [Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/).
 
 ---
 홈랩 인덱스: [[02-Areas/homelab/index|homelab]]
+
