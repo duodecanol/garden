@@ -14,6 +14,8 @@ publish: true
 
 > [!note] 관련 프로젝트
 > 같은 Cloudflare Zero Trust Team org 의 업무용 맥락은 [[01-Projects/oshiz-data-insight/index|oshiz-data-insight]] (db-middleman CT) 에 있다. 이 영역은 홈랩 사적 인프라 전반을 다룬다.
+- [[Ubuntu-Ventoy-USB-운영-가이드|Ubuntu에서 Ventoy USB 운영 가이드]] — Ubuntu 기반 Ventoy 부팅 USB 운영 및 장애 대응
+- [[2026-10-01_Proxmox-9.2-Ventoy-Gigabyte-BIOS-GPU-설정-비교|Proxmox 9.2 Ventoy 설치 전 Gigabyte BIOS·GPU 설정 비교]] — Ventoy 설치 전 BIOS·GPU 설정 비교
 
 ```dataview
 TABLE WITHOUT ID
